@@ -120,13 +120,21 @@ class MLXSwiGLU(nn.Module):
     
     Replaces: SwiGLU from PyTorch layers.py
     
-    Formula: SwiGLU(x) = Swish(xW_gate) ⊙ (xW_up)W_down
+    Formula: SwiGLU(x) = Swish(xW_gate+b) ⊙ (xW_up+b)W_down
     """
     
     def __init__(self, hidden_size: int, expansion: float):
         super().__init__()
         # TODO: Implement initialization
-        pass
+        self.hidden_size = hidden_size
+        self.expansion = expansion
+        self.expanded_size = int(hidden_size * expansion )
+
+        #projections
+        self.gate_up_proj = nn.Linear(hidden_size, self.expanded_size * 2, bias=False)
+        self.down_proj = nn.Linear(self.expanded_size, hidden_size, bias=False)
+    def Swish(self, x: mx.array) -> mx.array:
+        return x * mx.nn.functional.sigmoid(x)
     
     def __call__(self, x: mx.array) -> mx.array:
         """
@@ -138,8 +146,11 @@ class MLXSwiGLU(nn.Module):
         Returns:
             [batch, seq_len, hidden_size]
         """
-        # TODO: Implement SwiGLU
-        pass
+        
+        gate, up = self.gate_up_proj(x).chunk(2, dim=-1)
+        swiglu_x=self.Swish(gate) * up
+        swiglu_x=self.down_proj(swiglu_x)
+        return swiglu_x
 
 
 # ============================================================================
@@ -220,8 +231,8 @@ def rms_norm(
     Returns:
         Normalized tensor with same shape as input
     """
-    # TODO: Implement RMS normalization
-    pass
+    
+    return hidden_states / mx.sqrt(mx.mean(hidden_states**2, axis=-1, keepdims=True) + variance_epsilon)
 
 
 # ============================================================================
