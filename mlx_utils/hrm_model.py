@@ -10,6 +10,118 @@ Key components:
 - Gradient truncation for training stability
 
 Replaces: hrm_act_v1.py from PyTorch version
+
+ORIGINAL PYTORCH REFERENCE:
+---------------------------
+File: models/hrm/hrm_act_v1.py (lines 1-284)
+
+DATA STRUCTURES:
+
+1. HierarchicalReasoningModel_ACTV1InnerCarry (lines 15-18)
+   → HRMInnerCarry
+   - z_H: High-level state [batch, seq_len, hidden]
+   - z_L: Low-level state [batch, seq_len, hidden]
+
+2. HierarchicalReasoningModel_ACTV1Carry (lines 22-28)
+   → HRMCarry
+   - inner_carry: HRMInnerCarry
+   - steps: Number of reasoning steps [batch]
+   - halted: Boolean halt flags [batch]
+   - current_data: Dict of batch tensors
+
+CONFIG (lines 31-58):
+- H_cycles: 2 (default)
+- L_cycles: 2 (default)
+- H_layers: 4
+- L_layers: 4
+- hidden_size: 512
+- num_heads: 8
+- expansion: 4.0
+- halt_max_steps: 16
+- halt_exploration_prob: 0.1
+- forward_dtype: bfloat16
+
+MODULES:
+
+3. HierarchicalReasoningModel_ACTV1Block (lines 60-83)
+   → MLXTransformerBlock
+   - Attention + MLP with post-norm (unusual!)
+   - RMS norm AFTER each sub-layer
+
+4. HierarchicalReasoningModel_ACTV1ReasoningModule (lines 86-99)
+   → MLXReasoningModule
+   - Stack of transformer blocks
+   - Input injection (adds context)
+
+5. HierarchicalReasoningModel_ACTV1_Inner (lines 102-213)
+   → MLXHRMInner
+   CRITICAL ALGORITHM (lines 188-213):
+   
+   ```python
+   # Most iterations: NO GRADIENTS (efficient!)
+   with torch.no_grad():
+       for H_step in range(H_cycles - 1):  # -1 for last
+           for L_step in range(L_cycles - 1):
+               z_L = L_level(z_L, z_H + input_embeddings)
+           z_H = H_level(z_H, z_L)
+   
+   # Final iteration: WITH GRADIENTS (stable!)
+   z_L = L_level(z_L, z_H + input_embeddings)  # ← grad
+   z_H = H_level(z_H, z_L)                    # ← grad
+   
+   # Detach for next iteration
+   new_carry = HRMInnerCarry(z_H.detach(), z_L.detach())
+   ```
+   
+   This is THE KEY to HRM's efficiency!
+   - Deep computation (H_cycles * L_cycles steps)
+   - Only 1 step has gradients
+   - Stable training despite depth
+
+6. HierarchicalReasoningModel_ACTV1 (lines 216-284)
+   → MLXHRM
+   ACT wrapper (lines 240-283):
+   
+   ```python
+   # Update data & carry for halted sequences (lines 242-246)
+   new_carry = reset_carry(halted, old_carry)
+   new_data = where(halted, new_batch, old_data)
+   
+   # Forward inner model (line 249)
+   new_carry, logits, (q_halt, q_continue) = inner(carry, data)
+   
+   # Halting logic (lines 257-273):
+   if training:
+       # Dynamic halting based on Q-values
+       halted = (q_halt > q_continue) | is_last_step
+       
+       # Exploration: random min_steps
+       min_steps = random(halt_exploration_prob) * randint(2, max_steps)
+       halted = halted & (steps >= min_steps)
+       
+       # Bootstrap Q-continue target (lines 279-281)
+       next_q_halt, next_q_continue = inner(carry, data)
+       target_q = sigmoid(max(next_q_halt, next_q_continue))
+   else:
+       # Inference: always use max_steps (for batching)
+       halted = is_last_step
+   ```
+
+INITIALIZATION (lines 136-144):
+- H_init, L_init: Truncated normal, std=1.0
+- Broadcast to [hidden_size]
+- Used when resetting carry
+
+Q-HEAD (lines 114, 142-144):
+- Linear: hidden_size → 2 (q_halt, q_continue)
+- Special init: weights=0, bias=-5 (pessimistic start!)
+- Only uses first token: z_H[:, 0]
+
+EMBEDDING DETAILS (lines 146-166):
+- Token embeddings scaled by sqrt(hidden_size)
+- Puzzle embeddings prepended to sequence
+- Position embeddings (learned or RoPE) applied
+- Combined with 1/sqrt(2) scaling for learned pos
 """
 
 import mlx.core as mx

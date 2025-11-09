@@ -13,6 +13,44 @@ Key differences from PyTorch version:
 - No CUDA kernel dependencies
 - Optimized for Apple Metal GPU
 - Simpler API with @mx.compile support
+
+ORIGINAL PYTORCH REFERENCE:
+---------------------------
+File: models/layers.py (lines 1-158)
+
+Original Components:
+1. flash_attn_func (lines 8-11)
+   → Replaced by MLXAttention
+   → FlashAttention CUDA kernel → Native MLX attention
+   
+2. RotaryEmbedding (lines 80-96)
+   → Replicated as MLXRotaryEmbedding
+   → Same algorithm, MLX arrays instead of torch.Tensor
+   
+3. apply_rotary_pos_emb (lines 30-40)
+   → Same function signature in MLX
+   → rotate_half helper (lines 23-27)
+   
+4. Attention class (lines 98-136)
+   → Replicated as MLXAttention
+   → QKV projection → attention → output projection
+   
+5. SwiGLU (lines 138-149)
+   → Replicated as MLXSwiGLU
+   → gate_up_proj → silu(gate) * up → down_proj
+   
+6. rms_norm function (lines 151-158)
+   → Critical: matches PyTorch exactly
+   → Convert to float32 → compute → convert back
+   
+7. CastedLinear (lines 43-60)
+   → Simplified to MLXLinear (no casting needed!)
+   
+8. CastedEmbedding (lines 62-78)
+   → See embeddings.py
+
+NUMERICAL VALIDATION:
+Use mlx_utils.reference.NumericalValidator to verify outputs match!
 """
 
 import mlx.core as mx

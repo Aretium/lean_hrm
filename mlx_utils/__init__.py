@@ -51,5 +51,16 @@ __all__ = [
     # Optimizers (to be implemented)
     # "AdamMLX",
     # "SignSGD_MLX",
+    
+    # Reference & Validation (available now)
+    "OriginalSpecs",
+    "NumericalValidator",
+    "compare_outputs",
 ]
+
+# Import reference utilities
+try:
+    from .reference import OriginalSpecs, NumericalValidator, compare_outputs
+except ImportError:
+    pass  # Not critical during initial setup
 

@@ -7,6 +7,60 @@ Loss functions for HRM training:
 - ACT loss head (combines LM loss + Q-learning losses)
 
 Replaces: losses.py from PyTorch version
+
+ORIGINAL PYTORCH REFERENCE:
+---------------------------
+File: models/losses.py (lines 1-102)
+
+1. IGNORE_LABEL_ID = -100 (line 8)
+   → Standard PyTorch ignore index
+   
+2. s() function (lines 11-16)
+   → StableMax transformation
+   → s(x) = x+1 if x>=0 else 1/(1-x+eps)
+   → CRITICAL: Must match exactly for numerical stability
+   
+3. log_stablemax (lines 19-21)
+   → Log of normalized stablemax
+   → Used instead of log_softmax
+   
+4. stablemax_cross_entropy (lines 24-31)
+   → CRITICAL: HRM's preferred loss function
+   → More stable than softmax for extreme distributions
+   → Cast to float64 for precision!
+   
+5. softmax_cross_entropy (lines 34-37)
+   → Standard fallback
+   → Uses torch.nn.functional.cross_entropy
+   
+6. ACTLossHead class (lines 40-102)
+   → CRITICAL: Complete loss computation
+   → Three loss components:
+     a) LM loss: Token prediction (line 83)
+     b) Q-halt loss: Binary CE for stopping (line 84)
+     c) Q-continue loss: Bootstrap target (lines 92-96)
+   → Loss weights: 1.0 + 0.5 * (q_halt + q_continue)
+   
+   Metrics computed (lines 71-79):
+   - count: Valid sequences (halted & has labels)
+   - accuracy: Token-level accuracy
+   - exact_accuracy: Sequence-level accuracy
+   - q_halt_accuracy: Halt prediction accuracy
+   - steps: Average reasoning steps
+   
+   CRITICAL Details:
+   - Only compute loss for halted sequences (line 70)
+   - Normalize LM loss by sequence length (line 64)
+   - Q-halt target is sequence correctness (line 67)
+   - Bootstrap Q-continue from next step (line 94)
+
+LOSS FORMULA:
+total_loss = lm_loss + 0.5 * q_halt_loss + 0.5 * q_continue_loss
+
+Where:
+- lm_loss = sum(CE(logits, labels) / seq_len) over batch
+- q_halt_loss = BCE(q_halt_logits, is_sequence_correct)
+- q_continue_loss = BCE(q_continue_logits, sigmoid(max(next_q_halt, next_q_continue)))
 """
 
 import mlx.core as mx

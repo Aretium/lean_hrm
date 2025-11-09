@@ -6,6 +6,53 @@ Custom optimizers for HRM:
 - SignSGD_MLX: Sign-based SGD for sparse embeddings
 
 Replaces: adam_atan2.py and sparse_embedding optimizer from PyTorch version
+
+ORIGINAL PYTORCH REFERENCE:
+---------------------------
+File: models/sparse_embedding.py (lines 41-133)
+
+CastedSparseEmbeddingSignSGD_Distributed class (lines 41-96):
+→ SignSGD_MLX
+
+Key algorithm (_sparse_emb_signsgd_dist, lines 98-132):
+```python
+# 1. All-gather gradients from all GPUs (lines 114-118)
+all_weights_grad = distributed.all_gather(local_weights_grad)
+all_ids = distributed.all_gather(local_ids)
+
+# 2. Find unique puzzle IDs (line 121)
+grad_ids, inv = all_ids.unique(return_inverse=True)
+
+# 3. Accumulate gradients for unique IDs (lines 123-124)
+grad = zeros(grad_ids.shape[0], D)
+grad.scatter_add_(0, inv.expand(-1, D), all_weights_grad)
+
+# 4. SignSGD update with decoupled weight decay (lines 127-129)
+p = weights[grad_ids]
+p.mul_(1.0 - lr * weight_decay).add_(torch.sign(grad), alpha=-lr)
+weights[grad_ids] = p
+```
+
+MLX SIMPLIFICATION:
+- No distributed all-gather (single device!)
+- Gradients already accumulated by MLX
+- Just apply: p = p * (1 - lr * wd) - lr * sign(grad)
+- Much simpler!
+
+HYPERPARAMETERS (from config/cfg_pretrain.yaml):
+- puzzle_emb_lr: 1e-2 (100x higher than main lr!)
+- puzzle_emb_weight_decay: 0.1
+- Main lr: 1e-4
+- Main weight_decay: 0.1
+- betas: (0.9, 0.95) for Adam
+
+File: External dependency (adam_atan2 package)
+AdamATan2 class:
+→ AdamMLX (or use standard MLX Adam)
+
+This is a custom Adam variant using atan2 for parameter updates.
+May not be necessary for MLX - standard Adam likely sufficient.
+Monitor if needed during training.
 """
 
 import mlx.core as mx

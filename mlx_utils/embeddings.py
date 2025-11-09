@@ -10,6 +10,43 @@ Key differences from PyTorch version:
 - No manual dtype casting
 - Simpler sparse embedding implementation
 - Unified memory management
+
+ORIGINAL PYTORCH REFERENCE:
+---------------------------
+File: models/layers.py
+- CastedEmbedding (lines 62-78)
+  → MLXEmbedding
+  → Truncated normal init, cast to forward dtype
+
+File: models/sparse_embedding.py (lines 1-133)
+- CastedSparseEmbedding (lines 11-39)
+  → MLXSparseEmbedding
+  → CRITICAL: Unique per-puzzle embeddings
+  → Original: Complex local_weights buffer + distributed all-gather
+  → MLX: Simplified with unified memory
+  
+- CastedSparseEmbeddingSignSGD_Distributed (lines 41-96)
+  → See optimizers.py for SignSGD_MLX
+  → Original: All-gather → unique → sign(grad) update
+  → MLX: Much simpler (no distributed!)
+
+File: models/common.py (lines 1-33)
+- trunc_normal_init_ (lines 7-32)
+  → trunc_normal_init in MLX
+  → CRITICAL: JAX-style truncated normal (not PyTorch's!)
+  → Mathematically correct std dev
+  
+File: models/hrm/hrm_act_v1.py
+- Puzzle embedding usage (lines 116-121, 146-166)
+  → puzzle_emb_len calculation (ceil div)
+  → Concatenate before token embeddings
+  → Position embeddings cover both
+
+INITIALIZATION NOTES:
+- Token embeddings: init_std = 1.0 / sqrt(hidden_size)
+- Puzzle embeddings: init_std = 0.0 (zero init!)
+- Position embeddings: init_std = 1.0 / sqrt(hidden_size)
+- Scale factor: sqrt(hidden_size) applied to combined embeddings
 """
 
 import mlx.core as mx
