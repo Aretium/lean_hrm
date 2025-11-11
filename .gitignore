@@ -7,8 +7,9 @@
 # data
 /data/
 
-# Ideas document (brainstorming/internal notes)
-IDEAS.md
+# Markdown files (except README.md)
+*.md
+!README.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

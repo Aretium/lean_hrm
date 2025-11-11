@@ -35,6 +35,8 @@ def main():
         ("SwiGLU Activation", "test_swiglu.py"),
         ("Multi-Head Attention", "test_attention.py"),
         ("Transformer Block", "test_transformer_block.py"),
+        ("Loss Functions", "test_losses.py"),
+        ("Optimizers", "test_optimizers.py"),
     ]
 
     print("\n" + "="*80)
