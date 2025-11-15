@@ -80,39 +80,12 @@ IGNORE_LABEL_ID = -100
 # ============================================================================
 
 def stablemax(x: mx.array, epsilon: float = 1e-30) -> mx.array:
-    """
-    StableMax transformation (alternative to softmax).
     
-    Formula:
-        s(x) = x + 1           if x >= 0
-        s(x) = 1/(1 - x + ε)   if x < 0
-    
-    More numerically stable for extreme distributions.
-    
-    Args:
-        x: Input logits
-        epsilon: Small constant for numerical stability
-        
-    Returns:
-        Transformed values
-    """
-    
-
     s_x = mx.where(x < 0, 1.0/(1.0-x+epsilon), x+1.0)
     return s_x
 
 
 def log_stablemax(x: mx.array, axis: int = -1) -> mx.array:
-    """
-    Log of normalized stablemax (like log_softmax).
-    
-    Args:
-        x: Input logits
-        axis: Axis to normalize over
-        
-    Returns:
-        Log probabilities
-    """
     
     s_x = stablemax(x)
     return mx.log(s_x / mx.sum(s_x, axis=axis, keepdims=True))
@@ -138,21 +111,31 @@ def stablemax_cross_entropy(
     # The stablemax transformation should provide numerical stability even with float32
 
     # Compute log probabilities using stablemax
+    #logits : [batch, seq_len, vocab_size]
     logprobs = log_stablemax(logits, axis=-1)
-
+    #logprobs : [batch, seq_len, vocab_size]
     # Create mask for valid labels
-    valid_mask = labels != ignore_index
+    #labels : [batch, seq_len]
+    valid_mask = labels != ignore_index 
+    #valid_mask : [batch, seq_len]
 
     # Replace ignored indices with 0 to avoid errors in gather
+
     transformed_labels = mx.where(valid_mask, labels, 0)
 
     # Gather log probabilities for true labels
     # Need to handle the gather across the last dimension
     batch_size, seq_len, vocab_size = logits.shape
+    #flat_logprobs : [batch*seq_len, vocab_size]
     flat_logprobs = logprobs.reshape(-1, vocab_size)
+    #transformed_labels : [batch, seq_len]
+    #flat_labels : [batch*seq_len]
     flat_labels = transformed_labels.reshape(-1)
+    #prediction_logprobs : [batch, seq_len]
 
     # Gather predictions
+    #flat_logprobs : [batch*seq_len, vocab_size]
+    #flat_labels : [batch*seq_len]
     prediction_logprobs = mx.take_along_axis(
         flat_logprobs,
         flat_labels[:, None],
@@ -232,14 +215,14 @@ class MLXACTLossHead(nn.Module):
     
     def __init__(self, model: nn.Module, loss_type: str = "stablemax_cross_entropy"):
         super().__init__()
-        # TODO: Implement initialization
+       
         self.model = model
         self.loss_type = loss_type
         self.loss_fn = globals()[self.loss_type]
     
     def initial_carry(self, batch: Dict[str, mx.array]):
         """Pass through to model."""
-        # TODO: Implement
+        
         return self.model.initial_carry(batch)
         
     
@@ -381,10 +364,13 @@ def compute_accuracy(
         - seq_accuracy: Whether entire sequence is correct [batch]
     """
     # Get predicted tokens (argmax over vocabulary)
+    #logits : [batch, seq_len, vocab_size]
     predictions = mx.argmax(logits, axis=-1)
-
+    #predictions : [batch, seq_len]
     # Create mask for valid labels (not ignored)
-    valid_mask = labels != ignore_index
+    #labels : [batch, seq_len]
+    valid_mask = labels != ignore_index 
+    #valid_mask : [batch, seq_len] 
 
     # Check which predictions are correct
     correct = (predictions == labels) & valid_mask
